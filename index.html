@@ -181,6 +181,19 @@ tfoot td.r{text-align:right}
 /* FILTRO ANTECIPAÇÃO */
 .fg select.ant-sel{min-width:130px}
 
+/* BONIFICAÇÃO OPERADORA */
+.bonif-table-wrap{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-bottom:28px}
+.bonif-op-label{font-size:14px;font-weight:700;color:var(--purple)}
+.bonif-pct-badge{display:inline-block;background:var(--gold);color:var(--purple);font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;margin-left:6px}
+.bonif-region-tag{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:12px;margin-left:5px;vertical-align:middle}
+.bonif-region-mg{background:#e8f0fe;color:#1a5fa8}
+.bonif-region-sprj{background:#e6f4ee;color:#2e7d5e}
+.bonif-kpi-bonus{font-size:28px;font-weight:700;color:var(--gold);line-height:1}
+.bonif-edit-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
+.bonif-pct-input{width:65px;padding:5px 8px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;font-weight:700;color:var(--purple);text-align:center;outline:none}
+.bonif-pct-input:focus{border-color:var(--gold)}
+.bonif-rule-row{font-size:11px;color:var(--muted);margin-top:2px}
+
 @media(max-width:600px){.topbar{padding:0 16px;height:52px}.topbar-badge{display:none}.wrap{padding:16px 12px 40px}.filter-bar{flex-direction:column}.nav-tabs{overflow-x:auto}.bonus-bar{flex-direction:column;align-items:flex-start}.corretor-bar{flex-direction:column;align-items:flex-start}}
 </style>
 </head>
@@ -244,6 +257,7 @@ tfoot td.r{text-align:right}
       <div class="nav-tab active" onclick="switchTab('resumo')">📅 Resumo por Período</div>
       <div class="nav-tab" onclick="switchTab('operadoras')">🏢 Por Operadora</div>
       <div class="nav-tab" onclick="switchTab('detalhe')">📋 Detalhamento</div>
+      <div class="nav-tab" onclick="switchTab('bonif')">🎯 Bon. Operadora</div>
     </div>
 
     <!-- ══════════════════════════════════════════
@@ -339,11 +353,98 @@ tfoot td.r{text-align:right}
       </div>
     </div>
 
+    <!-- ══════════════════════════════════════════
+         TAB 4 — BONIFICAÇÃO OPERADORA
+    ══════════════════════════════════════════ -->
+    <div class="tab-content" id="tab-bonif">
+
+      <!-- FILTROS -->
+      <div class="filter-bar">
+        <div class="fg"><label>Período</label>
+          <select id="fBonifPeriodo" onchange="renderBonifOp()"><option value="">Todos</option></select></div>
+        <button class="btn-r" onclick="resetBonif()">✕ Limpar</button>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpi-row" id="kpiBonif"></div>
+
+      <!-- LEGENDA DE REGRAS -->
+      <div class="sec-head" style="margin-bottom:8px"><h2>Regras de Bonificação</h2></div>
+      <div id="bonifRegras" style="background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 22px;margin-bottom:22px;display:flex;flex-wrap:wrap;gap:10px 24px;font-size:12px"></div>
+
+      <!-- TABELA POR OPERADORA -->
+      <div class="sec-head"><h2>Resultado por Operadora</h2><span class="badge" id="bBonif">0</span></div>
+      <div class="bonif-table-wrap" id="tabelaBonif">
+        <div class="tbl-resp">
+          <table>
+            <thead><tr>
+              <th>Operadora / Segmento</th>
+              <th style="text-align:center">% Bônus</th>
+              <th style="text-align:right">Qtd Implantadas</th>
+              <th style="text-align:right">Valor Base (R$)</th>
+              <th style="text-align:right">Valor Bônus (R$)</th>
+            </tr></thead>
+            <tbody id="bonifBody"></tbody>
+            <tfoot id="bonifFoot"></tfoot>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
   </div>
 </div>
 
 <script>
 let DATA = [];
+
+// ─── BONIFICAÇÃO OPERADORA ────────────────────────────────────
+// Chave = nome normalizado da operadora (lowercase, sem acento, sem PME/PF/etc.)
+// Regras especiais do Hapvida: diferencia região (MG vs SP/RJ) e modalidade (PME/PF)
+// Lojas que contêm "MG" ou "GV" (Governador Valadares) ou "BH" são consideradas MG
+const BONUS_OP = {
+  // Hapvida: tratado de forma especial por região+modalidade — ver getBonifKey()
+  'hapvida pme sprj': { label:'Hapvida PME (SP/RJ)', pct: 40 },
+  'hapvida pme mg':   { label:'Hapvida PME (MG)',    pct: 20 },
+  'hapvida pf mg':    { label:'Hapvida PF (MG)',     pct: 30 },
+  // Demais
+  'medsenior':        { label:'MedSênior',           pct: 15 },
+  'amil':             { label:'Amil',                pct: 15 },
+  'bradesco':         { label:'Bradesco',             pct: 15 },
+  'seguros unimed':   { label:'Seguros Unimed',      pct: 15 },
+  'alice':            { label:'Alice',               pct: 15 },
+  'porto':            { label:'Porto',               pct: 15 },
+  'sulamerica':       { label:'SulAmérica',          pct: 15 },
+  '_outros':          { label:'Outras Operadoras',   pct:  0 },
+};
+
+// Detecta se a loja/coordenador é de Minas Gerais
+function isMG(loja, coordenador) {
+  const s = ((loja||'') + ' ' + (coordenador||'')).toLowerCase();
+  return s.includes('mg') || s.includes(' gv') || s.includes('gv ') || s.includes('governador') ||
+         s.includes('belo horizonte') || s.includes(' bh') || s.includes('bh ') ||
+         s.includes('minas') || s.includes('uberlândia') || s.includes('uberlandia') ||
+         s.includes('montes') || s.includes('contagem') || s.includes('juiz');
+}
+
+// Retorna a chave BONUS_OP para uma linha
+function getBonifKey(row) {
+  const op  = (row.operadora||'').toLowerCase().trim();
+  const mod = (row.modalidade||'').toLowerCase().trim();
+  if (op.includes('hapvida')) {
+    const mg = isMG(row.loja, row.coordenador);
+    if (mod.includes('pf')) return 'hapvida pf mg';  // PF só existe em MG nas regras
+    return mg ? 'hapvida pme mg' : 'hapvida pme sprj';
+  }
+  if (op.includes('medsenior') || op.includes('mêdsênior') || op.includes('med senior')) return 'medsenior';
+  if (op.includes('amil'))          return 'amil';
+  if (op.includes('bradesco'))      return 'bradesco';
+  if (op.includes('unimed'))        return 'seguros unimed';
+  if (op.includes('alice'))         return 'alice';
+  if (op.includes('porto'))         return 'porto';
+  if (op.includes('sulam') || op.includes('sul am')) return 'sulamerica';
+  return '_outros';
+}
 
 // ─── STATUS CONFIG ───────────────────────────────────────────
 const STATUS_CFG = [
@@ -484,7 +585,9 @@ const MAPA = {
   assinatura:  ['assinatura','dt assinatura','data assinatura','data de assinatura'],
   modalidade:  ['modalidade','tipo'],
   plano:       ['plano','produto','subproduto'],
-  antecipacao: ['antecipação','antecipacao','antecip'],
+  antecipacao:  ['antecipação','antecipacao','antecip'],
+  coordenador:  ['coordenador','coord'],
+  loja:         ['loja','unidade','filial'],
 };
 
 function findCol(headers, keys) {
@@ -545,6 +648,8 @@ function processarDados(rows) {
     modalidade:   col.modalidade   ? String(r[col.modalidade]  ||'').trim() : '—',
     plano:        col.plano        ? String(r[col.plano]       ||'').trim() : '—',
     antecipacao:  col.antecipacao  ? String(r[col.antecipacao] ||'').trim().toLowerCase() === 'sim' : false,
+    coordenador:  col.coordenador  ? String(r[col.coordenador] ||'').trim() : '',
+    loja:         col.loja         ? String(r[col.loja]        ||'').trim() : '',
   })).filter(r=>r.cod&&r.operadora);
 
   DATA.forEach(r=>r.statusKey=classifyStatus(r.status));
@@ -559,7 +664,7 @@ function processarDados(rows) {
   const operadoras = [...new Set(DATA.map(r=>r.operadora))].filter(Boolean).sort();
   const statuses   = [...new Set(DATA.map(r=>r.status))].filter(Boolean).sort();
 
-  ['fPeriodo','fPeriodo2','fResumoPeriodo'].forEach(id=>popSelect(id,periodos));
+  ['fPeriodo','fPeriodo2','fResumoPeriodo','fBonifPeriodo'].forEach(id=>popSelect(id,periodos));
   ['fStatus','fStatus2','fResumoStatus'].forEach(id=>popSelect(id,statuses));
   popSelect('fOp2',operadoras);
 
@@ -569,6 +674,7 @@ function processarDados(rows) {
   renderResumo();
   renderOperadoras();
   renderDetalhe();
+  renderBonifOp();
 }
 
 function popSelect(id, vals) {
@@ -585,7 +691,7 @@ function fmtN(n){return Number(n).toLocaleString('pt-BR');}
 // ─── TAB SWITCH ──────────────────────────────────────────────
 function switchTab(name) {
   document.querySelectorAll('.nav-tab').forEach((t,i)=>{
-    const names=['resumo','operadoras','detalhe'];
+    const names=['resumo','operadoras','detalhe','bonif'];
     t.classList.toggle('active', names[i]===name);
   });
   document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
@@ -1168,6 +1274,100 @@ function novoArquivo(){
   document.getElementById('uploadArea').style.display='block';
   document.getElementById('fileInput').value='';
   DATA=[];
+}
+
+// ══════════════════════════════════════════════════════════════
+// TAB 4 — BONIFICAÇÃO OPERADORA
+// ══════════════════════════════════════════════════════════════
+function resetBonif() {
+  document.getElementById('fBonifPeriodo').value = '';
+  renderBonifOp();
+}
+
+function renderBonifOp() {
+  const per = document.getElementById('fBonifPeriodo')?.value || '';
+  // Apenas Implantadas
+  const data = DATA.filter(r => {
+    if (per && r.periodo !== per) return false;
+    return r.statusKey === 'implantada';
+  });
+
+  // Agrupa por chave de bonificação
+  const grupos = {}; // key -> { label, pct, qtd, val }
+  data.forEach(r => {
+    const key = getBonifKey(r);
+    const cfg = BONUS_OP[key] || BONUS_OP['_outros'];
+    if (!grupos[key]) grupos[key] = { label: cfg.label, pct: cfg.pct, qtd: 0, val: 0 };
+    grupos[key].qtd++;
+    grupos[key].val += r.boleto;
+  });
+
+  // Ordena: maior valor primeiro, _outros por último
+  const linhas = Object.entries(grupos)
+    .sort((a,b) => {
+      if (a[0]==='_outros') return 1;
+      if (b[0]==='_outros') return -1;
+      return b[1].val - a[1].val;
+    });
+
+  // KPIs
+  const totalImp   = data.length;
+  const totalValImp= data.reduce((s,r) => s + r.boleto, 0);
+  const totalBonus = linhas.reduce((s,[,g]) => s + g.val * g.pct / 100, 0);
+
+  document.getElementById('kpiBonif').innerHTML = `
+    <div class="kpi p"><div class="kpi-label">Implantadas no Filtro</div><div class="kpi-val">${totalImp}</div><div class="kpi-sub">propostas elegíveis ao bônus</div></div>
+    <div class="kpi"><div class="kpi-label">Valor Base Total</div><div class="kpi-val" style="font-size:18px">R$&nbsp;${fmt(totalValImp)}</div><div class="kpi-sub">soma dos boletos implantados</div></div>
+    <div class="kpi" style="border-left-color:var(--gold)"><div class="kpi-label">💰 Total de Bônus</div><div class="bonif-kpi-bonus">R$&nbsp;${fmt(totalBonus)}</div><div class="kpi-sub">conforme regras por operadora</div></div>
+    <div class="kpi"><div class="kpi-label">Operadoras Elegíveis</div><div class="kpi-val">${linhas.filter(([k,g])=>g.pct>0&&g.qtd>0).length}</div><div class="kpi-sub">com % bônus configurado</div></div>
+  `;
+
+  // Regras visuais
+  const regrasEl = document.getElementById('bonifRegras');
+  if (regrasEl) {
+    const regras = [
+      { label:'Hapvida PME (SP/RJ)', pct:40, cor:'#2e7d5e' },
+      { label:'Hapvida PME (MG)',    pct:20, cor:'#1a5fa8' },
+      { label:'Hapvida PF (MG)',     pct:30, cor:'#1a5fa8' },
+      { label:'MedSênior, Amil, Bradesco, Seguros Unimed, Alice, Porto, SulAmérica', pct:15, cor:'#743764' },
+    ];
+    regrasEl.innerHTML = regras.map(r =>
+      `<div style="display:flex;align-items:center;gap:6px">
+        <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${r.cor};flex-shrink:0"></span>
+        <span style="color:var(--text);font-weight:600">${r.label}</span>
+        <span class="bonif-pct-badge">${r.pct}%</span>
+      </div>`
+    ).join('');
+  }
+
+  // Badge
+  document.getElementById('bBonif').textContent = linhas.length;
+
+  // Tabela
+  const totQtd = linhas.reduce((s,[,g])=>s+g.qtd,0);
+  const totVal  = linhas.reduce((s,[,g])=>s+g.val,0);
+  const totBon  = linhas.reduce((s,[,g])=>s+g.val*g.pct/100,0);
+
+  document.getElementById('bonifBody').innerHTML = linhas.length ? linhas.map(([key,g], i)=>{
+    const bonus = g.val * g.pct / 100;
+    const zebra = i % 2 === 1;
+    const bgRow = zebra ? 'background:#f9f5fc' : '';
+    return `<tr style="${bgRow}">
+      <td><span class="bonif-op-label">${g.label}</span></td>
+      <td style="text-align:center"><span class="bonif-pct-badge">${g.pct}%</span></td>
+      <td class="r">${g.qtd}</td>
+      <td class="r">R$ ${fmt(g.val)}</td>
+      <td class="r" style="color:var(--purple);font-weight:700">R$ ${fmt(bonus)}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">Nenhuma proposta Implantada encontrada com as regras configuradas.</td></tr>`;
+
+  document.getElementById('bonifFoot').innerHTML = `<tr>
+    <td><strong>TOTAL</strong></td>
+    <td style="text-align:center"><strong>—</strong></td>
+    <td class="r"><strong>${totQtd}</strong></td>
+    <td class="r"><strong>R$ ${fmt(totVal)}</strong></td>
+    <td class="r" style="color:var(--purple);font-weight:700"><strong>R$ ${fmt(totBon)}</strong></td>
+  </tr>`;
 }
 </script>
 </body>
