@@ -13,6 +13,16 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Basic Sans','Inter',Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
 
+/* RAPPORT TAB */
+.rapport-tabela-sel{display:flex;gap:6px}
+.rtab-btn{background:var(--card);border:2px solid var(--border);color:var(--muted);padding:7px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:1px;transition:all .18s;min-width:70px}
+.rtab-btn.active{background:var(--purple);border-color:var(--purple);color:#fff}
+.rtab-btn:hover:not(.active):not(.rtab-disabled){background:#f9f5fc;border-color:var(--purple-l);color:var(--purple)}
+.rtab-btn.rtab-disabled{opacity:.4;cursor:not-allowed}
+.rtab-sub{font-size:9px;font-weight:400;opacity:.75;line-height:1}
+.rapport-pct-badge{background:var(--gold);color:var(--purple);font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;display:inline-block}
+.rapport-empresa-label{font-weight:600;color:var(--text)}
+
 /* TOPBAR */
 .topbar{background:#fff;padding:0 32px;height:60px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid var(--gold);box-shadow:0 2px 8px rgba(0,0,0,.08);position:sticky;top:0;z-index:100}
 .topbar-left{display:flex;align-items:center;gap:14px}
@@ -258,6 +268,7 @@ tfoot td.r{text-align:right}
       <div class="nav-tab" onclick="switchTab('operadoras')">🏢 Por Operadora</div>
       <div class="nav-tab" onclick="switchTab('detalhe')">📋 Detalhamento</div>
       <div class="nav-tab" onclick="switchTab('bonif')">🎯 Bon. Operadora</div>
+      <div class="nav-tab" onclick="switchTab('rapport')">🤝 Bon. Rapport</div>
     </div>
 
     <!-- ══════════════════════════════════════════
@@ -392,11 +403,75 @@ tfoot td.r{text-align:right}
 
     </div>
 
+    <!-- ══════════════════════════════════════════
+         TAB 5 — BÔNUS RAPPORT
+    ══════════════════════════════════════════ -->
+    <div class="tab-content" id="tab-rapport">
+
+      <!-- FILTROS -->
+      <div class="filter-bar">
+        <div class="fg"><label>Período</label>
+          <select id="fRapportPeriodo" onchange="renderBonifRapport()"><option value="">Todos</option></select></div>
+        <div class="fg"><label>Tabela Rapport</label>
+          <div class="rapport-tabela-sel">
+            <button id="rTab1" class="rtab-btn active" onclick="setRapportTab(1)">Tabela 1<span class="rtab-sub">Internos</span></button>
+            <button id="rTab2" class="rtab-btn" onclick="setRapportTab(2)">Tabela 2<span class="rtab-sub">Externos</span></button>
+            <button id="rTab3" class="rtab-btn rtab-disabled" onclick="setRapportTab(3)" title="Tabela 3 não configurada nesta planilha">Tabela 3<span class="rtab-sub">N/D</span></button>
+          </div>
+        </div>
+        <button class="btn-r" onclick="resetRapport()">✕ Limpar</button>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpi-row" id="kpiRapport"></div>
+
+      <!-- SEÇÃO: com matching -->
+      <div class="sec-head" style="margin-top:4px"><h2>Resultado por Empresa Rapport</h2><span class="badge" id="bRapport">0</span></div>
+      <div class="tbl-resp" style="background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-bottom:22px">
+        <table>
+          <thead><tr>
+            <th>Empresa / Operadora (Rapport)</th>
+            <th style="text-align:center">Seção</th>
+            <th style="text-align:center">Tab.</th>
+            <th style="text-align:center">% RAPPORT</th>
+            <th style="text-align:right">Qtd Impl.</th>
+            <th style="text-align:right">Valor Base (R$)</th>
+            <th style="text-align:right">Bônus Rapport (R$)</th>
+          </tr></thead>
+          <tbody id="rapportBody"></tbody>
+          <tfoot id="rapportFoot"></tfoot>
+        </table>
+      </div>
+
+      <!-- SEÇÃO: sem matching -->
+      <div id="rapportSemMatch" style="display:none">
+        <div class="sec-head"><h2 style="color:var(--orange)">⚠ Operadoras sem regra Rapport</h2><span class="badge" id="bRapportSem">0</span></div>
+        <div class="tbl-resp" style="background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-bottom:22px">
+          <table>
+            <thead><tr>
+              <th>Operadora (na planilha)</th>
+              <th style="text-align:center">Modalidade</th>
+              <th style="text-align:right">Qtd Impl.</th>
+              <th style="text-align:right">Valor Base (R$)</th>
+            </tr></thead>
+            <tbody id="rapportSemBody"></tbody>
+          </table>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:22px">Essas operadoras não foram encontradas na tabela Rapport. Verifique o nome exato na planilha Rapport para incluí-las no cálculo.</p>
+      </div>
+
+    </div>
+
   </div>
 </div>
 
 <script>
 let DATA = [];
+let RAPPORT_TABELA_ATIVA = 1; // 1 ou 2 (tabela 3 não configurada)
+
+// ─── TABELA RAPPORT ──────────────────────────────────────────
+// 349 entradas: {s: seção, e: empresa, p: produto/faixa, t1: %RAPPORT T1, t2: %RAPPORT T2}
+const RAPPORT_TABLE = [{"s":"PME","e":"ALLCARE HAPVIDA (TODAS)","p":"01 a 99","t1":0.7,"t2":0.5},{"s":"PME","e":"ALLCARE S1 (Brasilia)","p":"01 a 99","t1":1.0,"t2":0.6},{"s":"PME","e":"ALLCARE (Pessoal Saúde)","p":"01 a 99","t1":1.0,"t2":0.6},{"s":"PME","e":"ALLCARE SMILE (TODAS)","p":"01 a 99","t1":1.0,"t2":0.6},{"s":"PME","e":"ALLCARE UNIMED BH","p":"01 a 99","t1":0.7,"t2":0.5},{"s":"PME","e":"ALLCARE UNIMED LESTE FLUMINENSE","p":"01 a 99","t1":0.5,"t2":0.3},{"s":"PME","e":"ALLCARE HUMANA","p":"01 a 99","t1":0.5,"t2":0.3},{"s":"PME","e":"AFFIX (Hapvida)","p":"01 a 99","t1":0.5,"t2":0.3},{"s":"PME","e":"ALTER BENEFÍCIOS - HAPVIDA","p":"01 a 99","t1":0.34,"t2":0.17},{"s":"PME","e":"AURORA","p":"01 A 29","t1":0.44,"t2":0.22},{"s":"PME","e":"AURORA","p":"30 a 99","t1":0.4,"t2":0.2},{"s":"PME","e":"ALICE","p":"02 a 29","t1":0.2,"t2":0.1},{"s":"PME","e":"AMEPLAN","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"AMIL","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"ANA COSTA","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"ASSIM SAUDE (0 a 18 anos)","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"ASSIM SAUDE (+19 anos)","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"ASSIM SAUDE - (Memorial)","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"ATIVIA SAÚDE","p":"01 a 29","t1":0.5,"t2":0.25},{"s":"PME","e":"ATIVIA SAÚDE","p":"30 a 99","t1":0.4,"t2":0.2},{"s":"PME","e":"BIOVIDA","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"BIOVIDA","p":"+100","t1":0.2,"t2":0.1},{"s":"PME","e":"BLUMED","p":"02 a 99","t1":0.5,"t2":0.25},{"s":"PME","e":"BRADESCO","p":"03 a 199","t1":0.72,"t2":0.36},{"s":"PME","e":"CARE PLUS","p":"02 a 29","t1":0.5,"t2":0.25},{"s":"PME","e":"CORPORE Ameplan PME","p":"02 a 29","t1":0.36,"t2":0.18},{"s":"PME","e":"CORPORE Amesc - CEMERU - PME","p":"02 a 29","t1":0.3,"t2":0.15},{"s":"PME","e":"CORPORE Dentalpar PME","p":"02 a 29","t1":0.4,"t2":0.2},{"s":"PME","e":"CORPORE Total Medcare PME","p":"02 a 29","t1":0.36,"t2":0.18},{"s":"PME","e":"CORPE FUNERAL","p":"02 a 29","t1":0.6,"t2":0.3},{"s":"PME","e":"DONA SAÚDE","p":"02 a 29","t1":0.54,"t2":0.27},{"s":"PME","e":"EASYPLAN ADMINISTRADORA - [Ceam Brasil] -Bronze e Bronze Plus","p":"","t1":0.3,"t2":0.15},{"s":"PME","e":"EASYPLAN ADMINISTRADORA - [Ceam Brasil] -Prata e Platinum","p":"","t1":0.3,"t2":0.15},{"s":"PME","e":"EASYPLAN ADMINISTRADORA - [Ideal Saúde] - Distrito Federal","p":"","t1":0.2,"t2":0.1},{"s":"PME","e":"GS GARANTIA","p":"02 a 29","t1":0.6,"t2":0.3},{"s":"PME","e":"HAPVIDA - SJC","p":"02 a 29","t1":0.46,"t2":0.23},{"s":"PME","e":"HAPVIDA - SJC","p":"30 a 99","t1":0.5,"t2":0.25},{"s":"PME","e":"HUBHEALTH","p":"02 a 29","t1":0.6,"t2":0.3},{"s":"PME","e":"KLINI SAUDE - RJ","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"LEVE SAUDE - RJ","p":"02 a 29","t1":0.4,"t2":0.2},{"s":"PME","e":"LEVE SAUDE - RJ","p":"Acima 30","t1":0.1,"t2":0.05},{"s":"PME","e":"NDI","p":"01 a 99","t1":0.7,"t2":0.35},{"s":"PME","e":"NDI - MINAS","p":"02 a 99","t1":0.5,"t2":0.25},{"s":"PME","e":"NDI - SUL","p":"02 a 99","t1":0.7,"t2":0.35},{"s":"PME","e":"OMINT","p":"01 a 29","t1":0.6,"t2":0.3},{"s":"PME","e":"PLENA SAUDE","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"PORTO SEGURO","p":"03 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"SAMI","p":"1 e 2","t1":0.6,"t2":0.3},{"s":"PME","e":"SAMI (Cartão de crédito)","p":"1 e 2","t1":0.6,"t2":0.3},{"s":"PME","e":"SAMI","p":"03 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"SAMOC","p":"02 a 29","t1":0.6,"t2":0.3},{"s":"PME","e":"SAMOC","p":"30 a 99","t1":0.36,"t2":0.18},{"s":"PME","e":"SANTA HELENA","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"SAGRADA FAMILIA","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"SÃO CRISTÓVÃO","p":"03 a 99","t1":0.54,"t2":0.27},{"s":"PME","e":"SÃO CRISTÓVÃO (0 a 11 anos)","p":"01 a 02","t1":0.1,"t2":0.1},{"s":"PME","e":"SÃO MIGUEL","p":"02 a 29","t1":0.6,"t2":0.3},{"s":"PME","e":"SÃO MIGUEL","p":"30 a 99","t1":0.2,"t2":0.1},{"s":"PME","e":"SÃO MIGUEL - SEGPLAN112","p":"02 a 29","t1":0.26,"t2":0.13},{"s":"PME","e":"SANTA CASA DE MAUÁ","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"SB SAÚDE","p":"02 a 99","t1":0.52,"t2":0.26},{"s":"PME","e":"SELECT","p":"02 a 29","t1":0.4,"t2":0.2},{"s":"PME","e":"SEGUROS UNIMED","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"SOBAM","p":"03 a 29","t1":0.6,"t2":0.3},{"s":"PME","e":"SOBAM","p":"30 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"SUL AMERICA","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"TOTAL MEDCARE","p":"01 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"TRASMONTANO","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"TEC GROUP SAÚDE (Brasília, Salvador e SP)","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"TEC GROUP SAÚDE (Belém,Campo Grande e Manaus)","p":"02 a 99","t1":0.35,"t2":0.175},{"s":"PME","e":"TEC GROUP SAÚDE (Proasa)","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"HBC","p":"02 a 99","t1":0.48,"t2":0.24},{"s":"PME","e":"HBC [DP WHITE]","p":"02 a 99","t1":0.52,"t2":0.26},{"s":"PME","e":"ÚNICA SAÚDE","p":"02 a 50","t1":0.54,"t2":0.27},{"s":"PME","e":"ÚNICA SAÚDE","p":"+ 50 vidas","t1":0.2,"t2":0.1},{"s":"PME","e":"UNIHOSP","p":"01 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"UNIMED FERJ","p":"02 a 99","t1":0.3,"t2":0.15},{"s":"PME","e":"UNIMED FERJ","p":"+100 vidas","t1":0.2,"t2":0.1},{"s":"PME","e":"UNIMED FLUMINENSE","p":"03 a 29","t1":0.5,"t2":0.25},{"s":"PME","e":"UNIMED GUARULHOS","p":"02 a 29","t1":0.6,"t2":0.3},{"s":"PME","e":"UNIMED JUNDIAÍ","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"UNIMED NACIONAL","p":"03 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"UNIMED OS BANDEIRANTES","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME","e":"UNIMED SANTOS","p":"02 a 49","t1":0.2,"t2":0.1},{"s":"PME","e":"VERA CRUZ","p":"02 a 29","t1":0.4,"t2":0.2},{"s":"PME","e":"VERA CRUZ","p":"30 a 99","t1":0.3,"t2":0.15},{"s":"PME","e":"VERA CRUZ","p":"+200 vidas","t1":0.2,"t2":0.1},{"s":"ADESÃO","e":"3S - UNIMED OS BANDEIRANTES","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"ACCES SAUDE AMIL","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"ACCES SAUDE HEALTH MED","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"ACCES SAUDE KLINI SAÚDE","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"ACCES SAUDE UNIMED SERRANA RJ","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"ABPLUS AMIL","p":"ADESÃO","t1":0.3,"t2":0.1},{"s":"ADESÃO","e":"ABPLUS ASSIM","p":"ADESÃO","t1":0.3,"t2":0.1},{"s":"ADESÃO","e":"ABPLUS  CEMERU SAÚDE","p":"ADESÃO","t1":0.3,"t2":0.1},{"s":"ADESÃO","e":"ABPLUS  HEALTH MED","p":"ADESÃO","t1":0.3,"t2":0.1},{"s":"ADESÃO","e":"ABPLUS  LEVE SAÚDE","p":"ADESÃO","t1":0.3,"t2":0.1},{"s":"ADESÃO","e":"ABPLUS  UNIMED COSTA VERDE","p":"ADESÃO","t1":0.3,"t2":0.1},{"s":"ADESÃO","e":"ABPLUS  UNIMED NOVA IGUAÇU","p":"ADESÃO","t1":0.3,"t2":0.1},{"s":"ADESÃO","e":"ADCPLASP","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"AFFIX  BIOVIDA","p":"ADESÃO","t1":0.65,"t2":0.35},{"s":"ADESÃO","e":"AFFIX AMEPLAN","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"AFFIX AMIL","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"AFFIX ASSIM","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"AFFIX ATIVIA","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"AFFIX ATIVIA - senior","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"AFFIX DENTALPAR","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"AFFIX METLIFE","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"AFFIX HAPVIDA","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"AFFIX MEDICAL HEALTH","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"AFFIX SANTA FILOMENA SAÚDE","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"AFFIX SÃO CRISTÓVÃO","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"AFFIX TOTAL MEDCARE","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"AFFIX UNIHOSP","p":"ADESÃO","t1":0.65,"t2":0.35},{"s":"ADESÃO","e":"AFFIX UNIMED JUNDIAÍ","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"AFFIX VERA CRUZ HOSPITAL","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"ALLCARE - AMEPLAN","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"ALLCARE AMIL","p":"ADESÃO","t1":1.5,"t2":1.0},{"s":"ADESÃO","e":"ALLCARE ASSIM","p":"ADESÃO","t1":1.5,"t2":1.0},{"s":"ADESÃO","e":"ALLCARE BENEVIDA","p":"ADESÃO","t1":1.5,"t2":1.0},{"s":"ADESÃO","e":"ALLCARE BLUEMED","p":"ADESÃO","t1":1.5,"t2":1.0},{"s":"ADESÃO","e":"ALLCARE NDI","p":"ADESÃO","t1":1.5,"t2":1.0},{"s":"ADESÃO","e":"ALLCARE NDI MINAS","p":"ADESÃO","t1":1.5,"t2":1.0},{"s":"ADESÃO","e":"ALLCARE NDI SUL","p":"ADESÃO","t1":1.5,"t2":1.0},{"s":"ADESÃO","e":"ALLCARE S1 SAUDE","p":"ADESÃO","t1":1.5,"t2":1.0},{"s":"ADESÃO","e":"ALLCARE SAMP","p":"ADESÃO","t1":1.5,"t2":1.0},{"s":"ADESÃO","e":"ALLCARE SANTA CASA DE MAUA","p":"ADESÃO","t1":1.5,"t2":1.0},{"s":"ADESÃO","e":"ALLCARE SÃO CRISTOVÃO","p":"ADESÃO","t1":1.5,"t2":1.0},{"s":"ADESÃO","e":"ALLCARE SMILE","p":"ADESÃO","t1":1.5,"t2":1.0},{"s":"ADESÃO","e":"ALLCARE UNIHOSP","p":"ADESÃO","t1":1.5,"t2":1.0},{"s":"ADESÃO","e":"ALLCARE UNIMED","p":"ADESÃO","t1":1.5,"t2":1.0},{"s":"ADESÃO","e":"ALTER BENEFÍCIOS - HAPVIDA","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"ALTER BENEFÍCIOS - HAPVIDA NDI","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"ALTER BENEFÍCIOS - SÃO FRANCISCO","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"BIOVIDA","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"CORPORE - Classes Laboriosas","p":"ADESÃO","t1":0.65,"t2":0.35},{"s":"ADESÃO","e":"CORPORE - Santa Casa de Mauá","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Amesc - CEMERU","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Amil","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Amil Dental","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Angeli","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Ativia","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Biovida","p":"ADESÃO","t1":0.65,"t2":0.35},{"s":"ADESÃO","e":"CORPORE Brasil Saúde","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Dentalpar","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Esmale","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Garatina","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"CORPORE GNDI Adesao","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"CORPORE GNDI Minas Gerais","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"CORPORE GNDI Sul","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"CORPORE Hapvida","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"CORPORE Helth med","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Humana Parana","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Klini","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Medical Health","p":"ADESÃO","t1":1.2,"t2":0.7},{"s":"ADESÃO","e":"CORPORE Odontogroup","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Odontoprev","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Oeste","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Oplan","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Pessoal Saúde","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Plamer","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Qsaúde","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"CORPORE Samoc PME","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"CORPORE São Camilo","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Sao Cristovao","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Total Medcare","p":"ADESÃO","t1":1.2,"t2":0.7},{"s":"ADESÃO","e":"CORPORE Unihosp","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Unimed Jundiai","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"CORPORE Unimed Nova Iguaçu","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"CORPORE Wdental","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"DIX MED UNIMED SERRANA","p":"01 A 99","t1":0.3,"t2":0.1},{"s":"ADESÃO","e":"DIX MED UNIMED SERRANA","p":"100 A 299","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"DIX MED UNIMED SERRANA","p":"300+","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"DIX MED KLINI SAÚDE","p":"01 A 99","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"DIX MED KLINI SAÚDE","p":"100 A 199","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"DIX MED KLINI SAÚDE","p":"200+","t1":0.75,"t2":0.5},{"s":"ADESÃO","e":"DIX MED HEALTHMED","p":"ADESÃO","t1":0.3,"t2":0.1},{"s":"ADESÃO","e":"DIX MED ÔNIX","p":"ADESÃO","t1":0.3,"t2":0.1},{"s":"ADESÃO","e":"DIX ASSIM SAÚDE","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"DIX HAPVIDA E NOVA SAÚDE","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"VALOR SAÚDE (GOLDEN CROSS)","p":"ADESÃO","t1":0.3,"t2":0.1},{"s":"ADESÃO","e":"HUBHEALTH","p":"ADESÃO","t1":1.8,"t2":0.8},{"s":"ADESÃO","e":"GRUPO CONTÉM [Klini]","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"GRUPO CONTÉM [ÔNIX]","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"GRUPO CONTÉM [Odonto Empresa]","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"GRUPO CONTÉM [Unimed Odonto]","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"GRUPO CONTÉM [Oplan]","p":"ADESÃO","t1":0.75,"t2":0.5},{"s":"ADESÃO","e":"G2C ADMINISTRADORA -  [Klini Saúde] A partir de 12 anos","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"G2C ADMINISTRADORA -  [Klini Sênior] Entre 49 e 69 anos","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"G2C ADMINISTRADORA - [Humana Saúde] Entre 00 e 11 anos","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"G2C ADMINISTRADORA - [Unimed Guarulhos] Entre 00 e 11 anos","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"G2C ADMINISTRADORA - [Klini Saúde] - Entre 00 e 11 anos","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"G2C ADMINISTRADORA - [Klini Sênior] - Acima de 69 anos","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"G2C ADMINISTRADORA - [Klini Rede Casa Hosp.] - Acima de 69 anos","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"G2C ADMINISTRADORA -[Assim Saúde e Unimed(s)]","p":"ADESÃO","t1":0.2,"t2":0.1},{"s":"ADESÃO","e":"EASYPLAN ADMINISTRADORA - [Ceam Brasil] -Bronze e Bronze Plus","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"EASYPLAN ADMINISTRADORA - [Ceam Brasil] -Prata e Platinum","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"EASYPLAN ADMINISTRADORA - [Plenum Saúde] - Distrito federal","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"EASYPLAN ADMINISTRADORA - [Smile] - Paraíba e Alagoas","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"EASYPLAN ADMINISTRADORA - [Healthmed] - RJ","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"EASYPLAN ADMINISTRADORA - [Ideal Saúde] - Distrito Federal","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"EASYPLAN ADMINISTRADORA - [Klini Saúde]","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"EASYPLAN ADMINISTRADORA - [Odonto Empresas] RJ e Distrito Federal","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"EASYPLAN ADMINISTRADORA - [Porto Seguro] - Odonto","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"EASYPLAN ADMINISTRADORA - [Hapvida] - Odonto","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"EASYPLAN ADMINISTRADORA - [OdontoGroUP]","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"EASYPLAN ADMINISTRADORA - [Adventist Health]","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"EASYPLAN ADMINISTRADORA - [Nova Saúde]","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"MOUNT HERMON AMPLA","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"NACIONAL SAÚDE","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"NUNES E GROSSI UNIMED SANTOS (AllCare)","p":"ADESÃO","t1":1.5,"t2":1.0},{"s":"ADESÃO","e":"PLURAL NDI","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"PLURAL MEDICAL HEALTH","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"PLURAL SBC","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"PLURAL UNIHOSP","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"PLURAL SANTA CASA DE MAUÁ","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"PLURAL UNIMED SEGUROS","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"PLURAL TOTAL MEDCARE","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"PLURAL CEMERU (RJ)","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"PLURAL HEALTH MED (RJ)","p":"ADESÃO","t1":0.75,"t2":0.5},{"s":"ADESÃO","e":"PLURAL NDI (RJ)","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"QUALICORP CLUBE DE SAUDE BLUE MED","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP CLUBE DE SAUDE HAPVIDA","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP CLUBE DE SAUDE KLINI","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP CLUBE DE SAUDE NDI MINAS","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP CLUBE DE SAUDE NDI SUL","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP AMIL","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP ANA COSTA","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP ASSIM","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP DOCTORCLIN","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP HUMANA","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP OESTE SAUDE","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP PARANÁ CLINICAS","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP SAMP","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP SÃO CRISTOVÃO","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP SEGUROS UNIMED","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP SMILE","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP SUL AMÉRICA","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP UNIMED","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QUALICORP CLUBE DE SAUDE NDI","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"QUALICORP CLUBE DE SAUDE ATIVIA","p":"ADESÃO","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"QUALICORP SP  (Premium)","p":"ADESÃO","t1":2.5,"t2":2.0},{"s":"ADESÃO","e":"QUALICORP SP  (Prime)","p":"ADESÃO","t1":2.0,"t2":1.5},{"s":"ADESÃO","e":"QUALICORP SP  (Plus)","p":"ADESÃO","t1":1.5,"t2":1.0},{"s":"ADESÃO","e":"QUALICORP RJ  (Premium)","p":"ADESÃO","t1":2.0,"t2":1.5},{"s":"ADESÃO","e":"QUALICORP","p":"PME","t1":1.0,"t2":0.5},{"s":"ADESÃO","e":"QUALICORP (Ampla)","p":"PME","t1":2.0,"t2":1.5},{"s":"ADESÃO","e":"QV SP e RJ - AMIL","p":"ADESÃO","t1":0.3,"t2":0.1},{"s":"ADESÃO","e":"QV RJ - GNDI","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"QV RJ - ASSIM","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QV SP e RJ - UNIMED RIO","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QV RJ - HEALTH MED","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QV  SP - GNDI","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QV SP - ASSIM","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"QV SP - HEALTH MED","p":"ADESÃO","t1":0.3,"t2":0.1},{"s":"ADESÃO","e":"SAFE LIFE AACL","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"SAFE LIFE AMEPLAN SAÚDE","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"SAFE LIFE AMIL","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"SAFE LIFE BIOVIDA","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"SAFE LIFE BLUE MED","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"SAFE LIFE GS GARANTIA","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"SAFE LIFE NOTRE DAME INTERMÉDICA","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"SAFE LIFE SAGRADA FAMILIA","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"SAFE LIFE SANTA CASA MAUÁ","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"SAFE LIFE TOTAL MEDCARE","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"SAFE LIFE UNIHOSP","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"UNICONSULT UNIMED FESP","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"SUPERMED SP/RJ","p":"ADESÃO","t1":0.3,"t2":0.1},{"s":"ADESÃO","e":"SELECT","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"UNICONSULT UNIMED JUNDIAÍ","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"TEC GROUP SAÚDE (Adventist Health)","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"TEC GROUP SAÚDE (Proasa)","p":"ADESÃO","t1":0.5,"t2":0.3},{"s":"ADESÃO","e":"VOCÊ CLUBE AMIL","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"VOCÊ CLUBE BRADESCO SAÚDE","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"ADESÃO","e":"VOCÊ CLUBE UNIHOSP","p":"ADESÃO","t1":0.7,"t2":0.5},{"s":"ADESÃO","e":"VOCÊ CLUBE NOTRE DAME INTERMÉDICA","p":"ADESÃO","t1":0.8,"t2":0.5},{"s":"PF","e":"ASSIM SAUDE - (Memorial)","p":"PF","t1":1.0,"t2":0.6},{"s":"PF","e":"ASSIM SAUDE (+19 anos)","p":"PF","t1":1.0,"t2":0.6},{"s":"PF","e":"ASSIM SAUDE (0 a 18 anos)","p":"PF","t1":1.0,"t2":0.6},{"s":"PF","e":"ASSIM SAUDE (Familiar I e II)","p":"PF","t1":1.0,"t2":0.6},{"s":"PF","e":"ATIVIA","p":"PF","t1":0.85,"t2":0.85},{"s":"PF","e":"BIOVIDA","p":"PF","t1":0.6,"t2":0.3},{"s":"PF","e":"BLUEMED","p":"PF","t1":1.3,"t2":1.0},{"s":"PF","e":"BLUEMED ATE 10 ANOS","p":"PF","t1":0.8,"t2":0.5},{"s":"PF","e":"CORPE FUNERAL","p":"PF","t1":0.6,"t2":0.3},{"s":"PF","e":"DONA SAÚDE","p":"PF","t1":1.75,"t2":1.25},{"s":"PF","e":"GOCARE","p":"PF","t1":1.5,"t2":1.1},{"s":"PF","e":"GOCARE (Litoral I e Litoral E)","p":"PF","t1":1.5,"t2":1.0},{"s":"PF","e":"GS Garantia de Saúde","p":"PF","t1":0.6,"t2":0.3},{"s":"PF","e":"HAPVIDA - SJC","p":"PF","t1":0.6,"t2":0.3},{"s":"PF","e":"KLINI SAÚDE","p":"PF","t1":1.0,"t2":0.5},{"s":"PF","e":"HBC","p":"PF","t1":1.4,"t2":1.2},{"s":"PF","e":"LEVE SAUDE RJ","p":"PF","t1":0.5,"t2":0.3},{"s":"PF","e":"MED SENIOR SP/RJ","p":"PF","t1":0.8,"t2":0.5},{"s":"PF","e":"MEDTOUR [DP WHITE]","p":"PF","t1":1.1,"t2":1.0},{"s":"PF","e":"MEDTOUR [DP WHITE] (12 de Outubro)","p":"PF","t1":1.0,"t2":0.6},{"s":"PF","e":"MEDTOUR - [DP WHITE] (Funcionário Público)","p":"PF","t1":0.6,"t2":0.4},{"s":"PF","e":"MEDTOUR - WORLD QUALITY","p":"PF","t1":1.3,"t2":0.8},{"s":"PF","e":"MEDTOUR - WORLD QUALITY  (Funcionário Público)","p":"PF","t1":0.6,"t2":0.6},{"s":"PF","e":"NDI","p":"PF","t1":0.6,"t2":0.3},{"s":"PF","e":"PLENA SAUDE","p":"PF","t1":0.6,"t2":0.3},{"s":"PF","e":"PREVENT SENIOR","p":"PF","t1":1.3,"t2":1.0},{"s":"PF","e":"SAGRADA FAMILIA","p":"PF","t1":0.6,"t2":0.3},{"s":"PF","e":"SAMOC (0 a 8 anos)","p":"PF","t1":0.5,"t2":0.5},{"s":"PF","e":"SAMOC (09 a 58 anos)","p":"PF","t1":1.25,"t2":0.75},{"s":"PF","e":"SAMOC (59+)","p":"PF","t1":0.8,"t2":0.5},{"s":"PF","e":"SANTA CASA DE MAUÁ","p":"PF","t1":0.6,"t2":0.3},{"s":"PF","e":"SÃO CRISTÓVÃO","p":"PF","t1":1.0,"t2":0.5},{"s":"PF","e":"SÃO FRANCISCO [DP WHITE]","p":"PF","t1":0.8,"t2":0.5},{"s":"PF","e":"SÃO MIGUEL","p":"PF","t1":0.6,"t2":0.3},{"s":"PF","e":"SAÚDE BENEFICIENCIA","p":"PF","t1":0.25,"t2":0.25},{"s":"PF","e":"SB SAÚDE","p":"PF","t1":1.5,"t2":1.0},{"s":"PF","e":"SELECT","p":"PF","t1":1.0,"t2":0.5},{"s":"PF","e":"SOBAM","p":"PF","t1":1.0,"t2":0.5},{"s":"PF","e":"TOTAL MEDCARE","p":"PF","t1":1.5,"t2":1.5},{"s":"PF","e":"TOTAL MEDCARE - ADVENT SÊNIOR","p":"PF","t1":1.5,"t2":1.0},{"s":"PF","e":"TRASMONTANO","p":"PF","t1":1.5,"t2":1.0},{"s":"PF","e":"ÚNICA SAÚDE","p":"PF","t1":1.7,"t2":1.2},{"s":"PF","e":"UNIMED SJC [DP WHITE]","p":"PF","t1":0.4,"t2":0.4},{"s":"PF","e":"UNIHOSP","p":"PF","t1":2.0,"t2":1.0},{"s":"PME DENTAL","e":"AMIL DENTAL / WIN","p":"PME","t1":0.6,"t2":0.3},{"s":"PME DENTAL","e":"ASSIM SAUDE - RJ","p":"02 a 99","t1":0.6,"t2":0.3},{"s":"PME DENTAL","e":"BRADESCO","p":"PME","t1":2.0,"t2":1.6},{"s":"PME DENTAL","e":"CARE PLUS","p":"PME","t1":1.5,"t2":1.3},{"s":"PME DENTAL","e":"DENTAL PAR","p":"PME","t1":1.5,"t2":1.0},{"s":"PME DENTAL","e":"DENTAL PAR","p":"PJ","t1":0.6,"t2":0.5},{"s":"PME DENTAL","e":"INTERODONTO","p":"PME","t1":0.8,"t2":0.5},{"s":"PME DENTAL","e":"ODONTOPREV","p":"PME","t1":0.6,"t2":0.3},{"s":"PME DENTAL","e":"OMINT","p":"PME","t1":0.6,"t2":0.3},{"s":"PME DENTAL","e":"PLENA ODONTO","p":"PME","t1":0.6,"t2":0.3},{"s":"PME DENTAL","e":"PORTO SEGURO","p":"PME","t1":0.6,"t2":0.3},{"s":"PME DENTAL","e":"SÃO CRISTÓVÃO","p":"PME","t1":0.6,"t2":0.3},{"s":"PME DENTAL","e":"SUL AMÉRICA","p":"PME","t1":0.6,"t2":0.3},{"s":"PME DENTAL","e":"UNIODONTO","p":"Acima 100","t1":0.5,"t2":0.5},{"s":"PME DENTAL","e":"UNIODONTO","p":"04 a 99","t1":0.6,"t2":0.3},{"s":"PME DENTAL","e":"UNIMED ODONTO","p":"PME","t1":0.6,"t2":0.3},{"s":"PF DENTAL","e":"AMIL DENTAL/ WIN / KIDS","p":"PF","t1":0.8,"t2":0.5},{"s":"PF DENTAL","e":"ASSIM SAÚDE - RJ","p":"PF","t1":0.5,"t2":0.3},{"s":"PF DENTAL","e":"BRADESCO MENSAL","p":"PF","t1":0.5,"t2":0.3},{"s":"PF DENTAL","e":"BRADESCO ANUAL","p":"PF","t1":0.1,"t2":0.1},{"s":"PF DENTAL","e":"DENTALPAR","p":"PF","t1":1.3,"t2":0.8},{"s":"PF DENTAL","e":"ODONTOPLAN","p":"PF","t1":0.5,"t2":0.3},{"s":"PF DENTAL","e":"ODONTOPREV MENSAL","p":"PF","t1":0.5,"t2":0.3},{"s":"PF DENTAL","e":"ODONTOPREV ANUAL","p":"PF","t1":0.1,"t2":0.1},{"s":"PF DENTAL","e":"ODONTOPREV MENSAL (Mogidonto)","p":"PF","t1":0.8,"t2":0.5},{"s":"PF DENTAL","e":"PLENA ODONTO","p":"PF","t1":1.5,"t2":0.6},{"s":"PF DENTAL","e":"SÃO CRISTÓVÃO","p":"PF","t1":1.5,"t2":0.6},{"s":"PF DENTAL","e":"SUL AMÉRICA","p":"PF","t1":0.5,"t2":0.5},{"s":"PF DENTAL","e":"UNIODONTO","p":"PF","t1":0.5,"t2":0.3}];
 
 // ─── BONIFICAÇÃO OPERADORA ────────────────────────────────────
 // Chave = nome normalizado da operadora (lowercase, sem acento, sem PME/PF/etc.)
@@ -664,7 +739,7 @@ function processarDados(rows) {
   const operadoras = [...new Set(DATA.map(r=>r.operadora))].filter(Boolean).sort();
   const statuses   = [...new Set(DATA.map(r=>r.status))].filter(Boolean).sort();
 
-  ['fPeriodo','fPeriodo2','fResumoPeriodo','fBonifPeriodo'].forEach(id=>popSelect(id,periodos));
+  ['fPeriodo','fPeriodo2','fResumoPeriodo','fBonifPeriodo','fRapportPeriodo'].forEach(id=>popSelect(id,periodos));
   ['fStatus','fStatus2','fResumoStatus'].forEach(id=>popSelect(id,statuses));
   popSelect('fOp2',operadoras);
 
@@ -675,6 +750,7 @@ function processarDados(rows) {
   renderOperadoras();
   renderDetalhe();
   renderBonifOp();
+  renderBonifRapport();
 }
 
 function popSelect(id, vals) {
@@ -691,7 +767,7 @@ function fmtN(n){return Number(n).toLocaleString('pt-BR');}
 // ─── TAB SWITCH ──────────────────────────────────────────────
 function switchTab(name) {
   document.querySelectorAll('.nav-tab').forEach((t,i)=>{
-    const names=['resumo','operadoras','detalhe','bonif'];
+    const names=['resumo','operadoras','detalhe','bonif','rapport'];
     t.classList.toggle('active', names[i]===name);
   });
   document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
@@ -1368,6 +1444,202 @@ function renderBonifOp() {
     <td class="r"><strong>R$ ${fmt(totVal)}</strong></td>
     <td class="r" style="color:var(--purple);font-weight:700"><strong>R$ ${fmt(totBon)}</strong></td>
   </tr>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// TAB 5 — BÔNUS RAPPORT
+// ══════════════════════════════════════════════════════════════
+
+// normStrict: remove TUDO que não é letra/número — "SUL AMERICA" = "SULAMERICA" = "SUL-AMERICA"
+function normStrict(s) {
+  return (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+}
+// normWords: mantém espaços para splitting em palavras
+function normWords(s) {
+  return (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+}
+
+// Busca na RAPPORT_TABLE uma entrada que melhor corresponde à operadora + modalidade da produção
+// Retorna o array de entries encontradas (pode ser >1 por faixas diferentes), ou []
+function findRapportEntries(operadora, modalidade) {
+  const opStrict  = normStrict(operadora);
+  const modNorm   = normWords(modalidade);
+
+  // Mapeamento de modalidade -> seção Rapport
+  let secaoAlvo = null;
+  if      (modNorm.includes('pme') || modNorm.includes('empresarial')) secaoAlvo = 'PME';
+  else if (modNorm.includes('pf')  || modNorm.includes('individual') || modNorm.includes('pessoal')) secaoAlvo = 'PF';
+  else if (modNorm.includes('ades')) secaoAlvo = 'ADESÃO';
+  else if (modNorm.includes('dental') && (modNorm.includes('pme') || modNorm.includes('empresarial'))) secaoAlvo = 'PME DENTAL';
+  else if (modNorm.includes('dental') && (modNorm.includes('pf')  || modNorm.includes('individual'))) secaoAlvo = 'PF DENTAL';
+
+  // Palavras com ≥3 chars para matching parcial
+  const opWords = normWords(operadora).split(' ').filter(w => w.length >= 3);
+
+  function tryPhases(filterSec) {
+    // Fase 1: exato sem espaços/pontuação ("SULAMERICA" == "SUL AMERICA")
+    let m = RAPPORT_TABLE.filter(e => {
+      if (filterSec && e.s !== secaoAlvo) return false;
+      return normStrict(e.e) === opStrict;
+    });
+    if (m.length) return m;
+
+    // Fase 2: um contém o outro (sem espaços)
+    m = RAPPORT_TABLE.filter(e => {
+      if (filterSec && e.s !== secaoAlvo) return false;
+      const eS = normStrict(e.e);
+      return eS.includes(opStrict) || opStrict.includes(eS);
+    });
+    if (m.length) return m;
+
+    // Fase 3: todas as palavras da operadora aparecem no nome Rapport
+    if (opWords.length >= 1) {
+      m = RAPPORT_TABLE.filter(e => {
+        if (filterSec && e.s !== secaoAlvo) return false;
+        const eW = normWords(e.e);
+        return opWords.every(w => eW.includes(w));
+      });
+      if (m.length) return m;
+    }
+
+    return [];
+  }
+
+  // Tenta com filtro de seção primeiro, depois sem
+  const com = tryPhases(true);
+  if (com.length) return com;
+  if (secaoAlvo) return tryPhases(false);
+  return [];
+}
+
+// Pega o % RAPPORT de uma lista de entries para a tabela selecionada (1 ou 2)
+// Quando há múltiplas faixas, usa a média ponderada simples (sem info de qtd por faixa)
+function getRapportPct(entries, tabela) {
+  const tKey = tabela === 1 ? 't1' : 't2';
+  const validos = entries.filter(e => e[tKey] != null);
+  if (!validos.length) return null;
+  // Para múltiplas faixas, usa a média
+  const soma = validos.reduce((s,e) => s + e[tKey], 0);
+  return soma / validos.length;
+}
+
+function setRapportTab(n) {
+  if (n === 3) return; // Tabela 3 não configurada
+  RAPPORT_TABELA_ATIVA = n;
+  document.querySelectorAll('.rtab-btn').forEach((b,i) => {
+    b.classList.toggle('active', i === n - 1 && i < 2);
+  });
+  renderBonifRapport();
+}
+
+function resetRapport() {
+  document.getElementById('fRapportPeriodo').value = '';
+  renderBonifRapport();
+}
+
+function renderBonifRapport() {
+  const per   = document.getElementById('fRapportPeriodo')?.value || '';
+  const tabela = RAPPORT_TABELA_ATIVA;
+
+  // Apenas Implantadas
+  const data = DATA.filter(r => {
+    if (per && r.periodo !== per) return false;
+    return r.statusKey === 'implantada';
+  });
+
+  // Agrupa por operadora+modalidade
+  const grupos = {}; // key -> { operadora, modalidade, qtd, val, entries, pct }
+  const semMatch = {}; // key -> { operadora, modalidade, qtd, val }
+
+  data.forEach(r => {
+    const key = (r.operadora + '||' + r.modalidade).toLowerCase();
+
+    if (!grupos[key] && !semMatch[key]) {
+      const entries = findRapportEntries(r.operadora, r.modalidade);
+      if (entries.length) {
+        const pct = getRapportPct(entries, tabela);
+        grupos[key] = {
+          operadora: r.operadora,
+          modalidade: r.modalidade,
+          qtd: 0, val: 0,
+          entries, pct,
+          secao: entries[0].s,
+          empresaRapport: entries[0].e + (entries.length > 1 ? ` (+${entries.length-1} faixas)` : '')
+        };
+      } else {
+        semMatch[key] = { operadora: r.operadora, modalidade: r.modalidade, qtd: 0, val: 0 };
+      }
+    }
+
+    if (grupos[key]) {
+      grupos[key].qtd++;
+      grupos[key].val += r.boleto;
+    } else if (semMatch[key]) {
+      semMatch[key].qtd++;
+      semMatch[key].val += r.boleto;
+    }
+  });
+
+  // ─── KPIs ────────────────────────────────────────────────
+  const totalImp = data.length;
+  const totalVal = data.reduce((s,r) => s + r.boleto, 0);
+  const linhas   = Object.values(grupos).filter(g => g.pct != null).sort((a,b) => b.val - a.val);
+  const totalBonus = linhas.reduce((s,g) => s + g.val * (g.pct || 0), 0);
+  const semLinhas  = Object.values(semMatch);
+
+  document.getElementById('kpiRapport').innerHTML = `
+    <div class="kpi p"><div class="kpi-label">Implantadas no Filtro</div><div class="kpi-val">${totalImp}</div><div class="kpi-sub">propostas elegíveis</div></div>
+    <div class="kpi"><div class="kpi-label">Valor Base Total</div><div class="kpi-val" style="font-size:18px">R$&nbsp;${fmt(totalVal)}</div><div class="kpi-sub">soma dos boletos implantados</div></div>
+    <div class="kpi" style="border-left-color:var(--gold)"><div class="kpi-label">💰 Bônus Rapport (T${tabela})</div><div class="bonif-kpi-bonus">R$&nbsp;${fmt(totalBonus)}</div><div class="kpi-sub">conforme tabela Rapport</div></div>
+    <div class="kpi"><div class="kpi-label">Empresas com Regra</div><div class="kpi-val">${linhas.length}</div><div class="kpi-sub">${semLinhas.length > 0 ? `<span style="color:var(--orange)">${semLinhas.length} sem match</span>` : 'todas encontradas'}</div></div>
+  `;
+
+  // ─── Tabela com match ─────────────────────────────────────
+  document.getElementById('bRapport').textContent = linhas.length;
+  const totQtd = linhas.reduce((s,g) => s + g.qtd, 0);
+  const totVal2 = linhas.reduce((s,g) => s + g.val, 0);
+  const totBon  = linhas.reduce((s,g) => s + g.val * (g.pct||0), 0);
+
+  document.getElementById('rapportBody').innerHTML = linhas.length ? linhas.map((g,i) => {
+    const bonus = g.val * (g.pct||0);
+    const bg = i%2===1 ? 'background:#f9f5fc' : '';
+    return `<tr style="${bg}">
+      <td><span class="rapport-empresa-label">${g.empresaRapport}</span><br><small style="color:var(--muted);font-size:11px">${g.operadora} · ${g.modalidade}</small></td>
+      <td style="text-align:center"><span style="font-size:11px;background:#f0eaf5;color:var(--purple);padding:2px 8px;border-radius:10px;font-weight:600">${g.secao}</span></td>
+      <td style="text-align:center"><span style="font-size:11px;font-weight:700;color:var(--purple)">T${tabela}</span></td>
+      <td style="text-align:center"><span class="rapport-pct-badge">${((g.pct||0)*100).toFixed(2).replace(/\.?0+$/,'')}%</span></td>
+      <td class="r">${g.qtd}</td>
+      <td class="r">R$ ${fmt(g.val)}</td>
+      <td class="r" style="color:var(--purple);font-weight:700">R$ ${fmt(bonus)}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">Nenhuma proposta Implantada encontrada com correspondência na tabela Rapport.</td></tr>`;
+
+  document.getElementById('rapportFoot').innerHTML = `<tr>
+    <td colspan="4"><strong>TOTAL</strong></td>
+    <td class="r"><strong>${totQtd}</strong></td>
+    <td class="r"><strong>R$ ${fmt(totVal2)}</strong></td>
+    <td class="r" style="color:var(--purple);font-weight:700"><strong>R$ ${fmt(totBon)}</strong></td>
+  </tr>`;
+
+  // ─── Sem match ────────────────────────────────────────────
+  const semEl = document.getElementById('rapportSemMatch');
+  if (semLinhas.length) {
+    semEl.style.display = 'block';
+    document.getElementById('bRapportSem').textContent = semLinhas.length;
+    document.getElementById('rapportSemBody').innerHTML = semLinhas
+      .sort((a,b) => b.val - a.val)
+      .map((g,i) => {
+        const bg = i%2===1 ? 'background:#fff8f0' : '';
+        return `<tr style="${bg}">
+          <td style="font-weight:600">${g.operadora}</td>
+          <td style="text-align:center">${g.modalidade}</td>
+          <td class="r">${g.qtd}</td>
+          <td class="r">R$ ${fmt(g.val)}</td>
+        </tr>`;
+      }).join('');
+  } else {
+    semEl.style.display = 'none';
+  }
 }
 </script>
 </body>
